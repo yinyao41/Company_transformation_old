@@ -80,8 +80,8 @@ st.set_page_config(page_title="公司转型升级方案生成器", layout="wide"
 st.title("🏭 公司转型升级方案生成器")
 
 with st.form(key="company_info_form"):
-    company_name = st.text_input("公司名称*", placeholder="例如：北欧无人机和固态电池项目")
-    industry = st.text_input("所属行业*", placeholder="例如：新能源")
+    company_name = st.text_input("公司名称*", placeholder="例如：山东固丰体育产业有限公司")
+    industry = st.text_input("所属行业*", placeholder="例如：体育产业")
     current_status = st.text_area("公司当前情况描述*", placeholder="描述公司规模、问题、优势等...", height=150)
     additional_info = st.file_uploader("上传公司相关文件（可选）", type=["pdf", "docx", "txt"])
     
