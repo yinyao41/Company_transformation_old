@@ -13,9 +13,8 @@ GITHUB_USERNAME = "yinyao41"
 GITHUB_REPO = "Company_transformation"
 BRANCH = "master"
 
-# 只使用 data 目录下的两个文件（已移除提示词文件）
+# 只使用 data 目录下的一个文件（已移除提示词文件）
 TEMPLATE_FILES = [
-    "data/山东固丰体育产业有限公司转型升级分析报告.docx",
     "data/转型升级提示词内容 - 1.docx",
 ]
 
@@ -24,14 +23,9 @@ TEMPLATE_FILES = [
 # =============================================================================
 SYSTEM_PROMPT = """你是一位专业的公司转型升级咨询专家。
 请严格按照「转型升级提示词内容 - 1.docx」中的六套方案决策矩阵、输出格式（一页纸决策单 + 详细实施报告）和所有规则要求，
-结合「山东固丰体育产业有限公司转型升级分析报告.docx」的内容风格，
 为用户提供的公司生成一份完整、简洁、可执行的转型升级方案报告。
-必须包含：
-- 一页纸高管决策单（首页）
-- 详细实施报告（含路线图、风险、行动清单）
-- 使用客户语言，禁止出现 Tag、Size、评分、权重等内部术语
-- 必须提供 Plan B 对冲方案
-现在请开始生成。"""
+
+"""
 
 # =============================================================================
 # 阿里通义千问客户端
@@ -51,7 +45,7 @@ MODEL_NAME = "qwen-max"
 # =============================================================================
 # 加载两个模板文件（静默处理 + 强力截断）
 # =============================================================================
-@st.cache_data(show_spinner="正在加载两个模板文件...")
+@st.cache_data(show_spinner="正在加载一个模板文件...")
 def load_templates():
     templates = []
     for rel_path in TEMPLATE_FILES:
@@ -114,7 +108,7 @@ if submit_button:
                 response = client.chat.completions.create(
                     model=MODEL_NAME,
                     messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT + "\n\n以下是两个模板文件内容：\n" + TEMPLATES_TEXT},
+                        {"role": "system", "content": SYSTEM_PROMPT + "\n\n以下是一个模板文件内容：\n" + TEMPLATES_TEXT},
                         {"role": "user", "content": f"基于模板，为以下公司生成完整转型升级方案：\n{user_context}"}
                     ],
                     temperature=0.3,
