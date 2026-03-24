@@ -70,8 +70,8 @@ TEMPLATES_TEXT = load_templates()
 # =============================================================================
 # Streamlit 界面
 # =============================================================================
-st.set_page_config(page_title="公司转型升级方案生成器", layout="wide")
-st.title("🏭 公司转型升级方案生成器")
+st.set_page_config(page_title="转型升级方案", layout="wide")
+st.title("🏭 转型升级方案")
 
 with st.form(key="company_info_form"):
     company_name = st.text_input("公司名称*", placeholder="例如：山东固丰体育产业有限公司")
