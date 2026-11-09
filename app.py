@@ -1,5 +1,4 @@
 import streamlit as st
-import requests
 from docx import Document
 from io import BytesIO
 from openai import OpenAI
@@ -26,24 +25,25 @@ client = OpenAI(
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
-MODEL_NAME = "qwen-plus"  # 推荐使用 plus 更快，必要时改回 qwen-max
-MAX_OUTPUT_TOKENS = 8000  # 八套方向 + 公司画像，需要足够的输出空间
+MODEL_NAME = "qwen-plus"          # 推荐 plus；需要更强推理可改 qwen-max
+MAX_OUTPUT_TOKENS = 8000          # 八套方向 + 公司画像需要足够输出空间
 
 # =============================================================================
-# 长度控制（避免触发 "Range of input length should be [1, 1000000]" 报错）
+# 长度控制（防止触发 input length 超限）
 # =============================================================================
-MAX_CHARS_PER_FILE = 30000       # 每个补充文件最多保留的字符数
-MAX_TOTAL_EXTRA_CHARS = 120000   # 所有补充文件合计最多保留的字符数
-MAX_TOTAL_PROMPT_CHARS = 900000  # 系统提示词 + 用户输入 总长度上限
+MAX_CHARS_PER_FILE = 30000
+MAX_TOTAL_EXTRA_CHARS = 120000
+MAX_TOTAL_PROMPT_CHARS = 900000
 
 # =============================================================================
 # 八套转型升级方向文档路径
 # =============================================================================
-SCHEME_DOC_NAME = "附件2-4-1 八套转型升级方向.202605.docx"
+SCHEME_DOC_NAME = "附件2-4-1 八套转型升级方向.202605-2.docx"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCHEME_DOC_CANDIDATES = [
     os.path.join("data", SCHEME_DOC_NAME),
     os.path.join(BASE_DIR, "data", SCHEME_DOC_NAME),
+    os.path.join(BASE_DIR, SCHEME_DOC_NAME),
 ]
 
 # =============================================================================
@@ -60,7 +60,7 @@ FULL_SYSTEM_PROMPT = """【角色设定】
 以下是完整的八套方向内容（已从文档中读取）：
 """
 
-# 自动加载文档内容并拼接到 Prompt
+# 自动加载文档内容
 try:
     scheme_doc_path = next((p for p in SCHEME_DOC_CANDIDATES if os.path.exists(p)), None)
     if scheme_doc_path:
@@ -68,7 +68,7 @@ try:
         doc_text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
         FULL_SYSTEM_PROMPT += doc_text
     else:
-        FULL_SYSTEM_PROMPT += "（方向文档加载失败，请检查 data 目录）"
+        FULL_SYSTEM_PROMPT += "（方向文档加载失败，请检查 data 目录下是否存在对应 docx 文件）"
 except Exception as e:
     FULL_SYSTEM_PROMPT += f"（方向文档加载失败: {str(e)}）"
 
@@ -78,7 +78,7 @@ FULL_SYSTEM_PROMPT += """
 
 一、整体结构（按顺序输出，不得增删、合并或调换）
 1. 最开头原样输出上面的免责声明。
-2. 随后输出“## 公司画像（简要提炼）”，用4个要点概括：
+2. 随后输出“## 公司画像（简要提炼）”，严格用以下4个要点概括：
    - **所属行业：**
    - **核心业务：**
    - **当前痛点/瓶颈：**
@@ -119,14 +119,14 @@ FULL_SYSTEM_PROMPT += """
 1. 必须深度融合该公司的产业特点、核心资源、渠道网络、区域地位等实际情况；每条落地方向都要具体到业务板块、产品品类、客户群体，禁止泛泛而谈。
 2. 方向库文档中带花括号{}的内容以及“恒力机械”等示例企业，仅作为格式和深度的参考，禁止照抄，输出中不得出现花括号，必须基于用户公司重新撰写。
 3. 涉及金额、比例等量化目标时，应基于用户提供的数据合理测算，并使用“约”“预计”“目标”等措辞，不得写成既成事实，不得编造用户未提供的财务数据。
-4. 方向七（投资科创企业）：必须体现“资方直投科创企业、采用专项基金形式”，并引导选用同祺担任基金管理人（负责项目筛选、投资决策和全周期投后管理）。必须区分“产业相关型”和“产业不相关型”。
+4. 方向七（投资科创企业）：必须体现“资方直投科创企业、采用专项基金形式”，并引导选用同祺担任基金管理人（负责项目筛选、投资决策和全周期投后管理）。必须明确区分“产业相关型”和“产业不相关型”，并分别给出落地路径。
 5. 方向八（投资科创基金）：必须体现“资方以LP身份参与盲池基金”，并引导选用同祺担任基金管理人（GP）；可结合基金规模、期限、管理费、超额收益分配等要素。
 6. 语言专业严谨，使用“第二曲线”“生态闭环”“耐心资本”“精益红利”等产业术语，突出企业的品牌势能、区域龙头地位等差异化特征（若用户未提供则据实表述，不要虚构）。
 7. 篇幅控制：每条落地方向、优势、要点尽量控制在80字以内，确保公司画像与八套方向全部完整输出，不得因篇幅而省略任何方向或模块。
 """
 
 # =============================================================================
-# 输出格式校验（严格对照文档结构）
+# 输出格式校验
 # =============================================================================
 EXPECTED_DIRECTIONS = [
     ("一", "并购科创企业"),
@@ -261,7 +261,6 @@ def extract_text_from_txt(file_bytes: bytes) -> str:
 
 
 def parse_uploaded_file(uploaded_file) -> str:
-    """根据文件类型解析文本，解析失败时抛出异常，由调用方捕获并提示用户。"""
     filename = uploaded_file.name.lower()
     file_bytes = uploaded_file.read()
 
@@ -276,7 +275,6 @@ def parse_uploaded_file(uploaded_file) -> str:
 
 
 def truncate(text: str, max_chars: int) -> tuple[str, bool]:
-    """截断文本，返回 (截断后的文本, 是否发生了截断)"""
     if len(text) > max_chars:
         return text[:max_chars], True
     return text, False
@@ -298,13 +296,21 @@ DEFAULT_CURRENT_STATUS = """宁波市博华机械配件有限公司成立于2009
 整体来看，博华机械属于典型的"铸造+机械加工"一体化中小型制造企业，业务技术路线成熟，传统制造属性较强，主要竞争力体现在客户定制能力、铸造与机加工一体化能力以及多年积累的生产工艺和客户资源。"""
 
 with st.form(key="company_info_form"):
-    company_name = st.text_input("公司名称*", value="宁波市博华机械配件有限公司", placeholder="例如：山东固丰体育产业有限公司")
-    industry = st.text_input("所属行业*", value="机械加工", placeholder="例如：体育产业")
+    company_name = st.text_input(
+        "公司名称*",
+        value="宁波市博华机械配件有限公司",
+        placeholder="例如：山东固丰体育产业有限公司"
+    )
+    industry = st.text_input(
+        "所属行业*",
+        value="机械加工",
+        placeholder="例如：体育产业"
+    )
     current_status = st.text_area(
         "公司当前情况描述*",
         value=DEFAULT_CURRENT_STATUS,
         placeholder="描述公司规模、问题、优势、核心业务、渠道、品牌等...",
-        height=200,
+        height=220,
     )
     additional_files = st.file_uploader(
         "额外上传补充文件（可选，支持多选，pdf / docx / txt）",
@@ -347,8 +353,7 @@ if submit_button:
             for w in truncate_warnings:
                 st.info(f"ℹ️ {w}")
         if additional_files:
-            success_count = len(extra_text_blocks)
-            st.caption(f"共上传 {len(additional_files)} 个文件，成功解析 {success_count} 个。")
+            st.caption(f"共上传 {len(additional_files)} 个文件，成功解析 {len(extra_text_blocks)} 个。")
 
         user_context = f"""
 公司名称：{company_name}
@@ -386,7 +391,7 @@ if submit_button:
                 scheme, was_cut = call_model(base_messages)
                 issues = validate_output(scheme, was_cut)
 
-                # 格式不合格时，带着问题清单让模型完整重写一次
+                # 格式不合格时完整重写一次
                 if issues:
                     fix_prompt = (
                         "上一版输出未完全符合格式要求，存在以下问题：\n"
@@ -409,14 +414,17 @@ if submit_button:
             except Exception as e:
                 st.error(f"AI 调用失败：{str(e)}")
 
-# 结果展示放在表单之外，点击“下载”触发页面刷新后结果也不会消失
+# 结果展示（放在表单外，下载后刷新不丢失）
 if st.session_state.get("scheme"):
     st.success("✅ 生成完成！")
     st.warning("**重要提示：本方向仅供参考，不构成任何正式的投资、经营或法律建议。**")
 
     result_issues = st.session_state.get("scheme_issues", [])
     if result_issues:
-        st.warning("⚠️ 输出格式自检发现以下问题，建议重新生成一次：\n\n" + "\n".join(f"- {i}" for i in result_issues))
+        st.warning(
+            "⚠️ 输出格式自检发现以下问题，建议重新生成一次：\n\n"
+            + "\n".join(f"- {i}" for i in result_issues)
+        )
     else:
         st.caption("✅ 已通过格式自检：公司画像 + 八套方向，每套含4个固定模块。")
 
