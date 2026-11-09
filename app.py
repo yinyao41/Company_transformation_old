@@ -4,6 +4,7 @@ from docx import Document
 from io import BytesIO
 from openai import OpenAI
 import os
+import re
 
 # 用于解析 PDF —— 需要 requirements.txt 中包含 pypdf
 try:
@@ -26,6 +27,7 @@ client = OpenAI(
 )
 
 MODEL_NAME = "qwen-plus"  # 推荐使用 plus 更快，必要时改回 qwen-max
+MAX_OUTPUT_TOKENS = 8000  # 八套方向 + 公司画像，需要足够的输出空间
 
 # =============================================================================
 # 长度控制（避免触发 "Range of input length should be [1, 1000000]" 报错）
@@ -38,7 +40,7 @@ MAX_TOTAL_EXTRA_CHARS = 120000   # 所有补充文件合计最多保留的字符
 MAX_TOTAL_PROMPT_CHARS = 900000  # 系统提示词 + 用户输入 总长度上限（留出安全余量，API 上限是 1,000,000）
 
 # =============================================================================
-# 八套转型升级方向文档路径（请把新版 docx 放入 data 目录，并与下面文件名保持一致）
+# 八套转型升级方向文档路径（请把附件2-4-1 docx 放入 data 目录，并与下面文件名保持一致）
 # =============================================================================
 SCHEME_DOC_NAME = "附件2-4-1 八套转型升级方向.202605.docx"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -72,22 +74,158 @@ except Exception as e:
     FULL_SYSTEM_PROMPT += f"（方向文档加载失败: {str(e)}）"
 
 FULL_SYSTEM_PROMPT += """
-【输出要求】
-请严格按照以下格式为用户公司生成**八套**专属转型升级方向，八套方向依次为：
-方向一：并购科创企业；方向二：产研合作；方向三：数智化改造；方向四：渠道合作；
-方向五：精益管理；方向六：全球化出海布局；方向七：投资科创企业；方向八：投资科创基金。
 
-0. 先输出"公司画像（简要提炼）"，包含：所属行业、核心业务、当前痛点/瓶颈、可用资源。
-1. 八套方向必须逐一输出，不得遗漏、合并或新增，每个方向的标题格式为：
-   "方向X：方向名称，实现[贴合该公司的战略目标]"。
-2. 结构要求（每个方向必须包含以下4个固定模块）：
-   - 方向核心定位（1-2句话）
-   - [公司名]专属落地方向（3-4条具体路径，结合公司实际，具体到业务板块、产品品类、客户群体）
-   - 转型核心优势（4条）
-   - 核心实施要点（4条）
-3. 必须深度定制，结合公司行业、业务、资源、痛点，禁止泛泛而谈。
-4. 语言专业，使用"第二曲线"、"生态闭环"、"耐心资本"、"精益红利"等产业术语。
+【输出要求】
+上述方向库文档末尾的[输出要求]与[输出格式示例]即为最终输出标准，执行细则如下，必须逐条遵守：
+
+一、整体结构（按顺序输出，不得增删、合并或调换）
+1. 最开头原样输出上面的免责声明。
+2. 随后输出“## 公司画像（简要提炼）”，用4个要点概括：所属行业、核心业务、当前痛点/瓶颈、可用资源。内容依据用户提供的信息提炼，信息不足处标注“（待补充）”，不得编造事实或数据。
+3. 然后依次输出八套专属方向，顺序与名称固定如下：
+   方向一：并购科创企业
+   方向二：产研合作
+   方向三：数智化改造
+   方向四：渠道合作
+   方向五：精益管理
+   方向六：全球化出海布局
+   方向七：投资科创企业
+   方向八：投资科创基金
+4. 文档中“请根据以上8套方向，一一对应分析并给出……”是对你的指令，不要原样输出。
+
+二、每套方向的固定格式（严格包含4个模块，名称不得更改）
+### 方向X：方向名称，实现[结合该公司实际的战略目标，一句话]
+**方向核心定位**
+（1-2句话，说明该方向对该公司的战略意义）
+**[公司简称]专属落地方向**
+1. ……
+2. ……
+3. ……（共3-4条）
+**转型核心优势**
+1. ……（共4条）
+**核心实施要点**
+1. ……（共4条）
+每个模块内的条目序号都从1开始，不要接着上一个模块继续编号。
+
+三、内容要求
+1. 必须深度融合该公司的产业特点、核心资源、渠道网络、区域地位等实际情况；每条落地方向都要具体到业务板块、产品品类、客户群体，禁止泛泛而谈。
+2. 方向库文档中带花括号{}的内容以及“恒力机械”等示例企业，仅作为格式和深度的参考，禁止照抄，输出中不得出现花括号，必须基于用户公司重新撰写。
+3. 涉及金额、比例等量化目标时，应基于用户提供的数据合理测算，并使用“约”“预计”“目标”等措辞，不得写成既成事实，不得编造用户未提供的财务数据。
+4. 方向七（投资科创企业）：必须体现“资方直投科创企业、采用专项基金形式”，并引导选用同祺担任基金管理人（负责项目筛选、投资决策和全周期投后管理）。
+5. 方向八（投资科创基金）：必须体现“资方以LP身份参与盲池基金”，并引导选用同祺担任基金管理人（GP）；可结合基金规模、期限、管理费、超额收益分配等要素。
+6. 语言专业严谨，使用“第二曲线”“生态闭环”“耐心资本”“精益红利”等产业术语，突出企业的品牌势能、区域龙头地位等差异化特征（若用户未提供则据实表述，不要虚构）。
+7. 篇幅控制：每条不超过80字，确保公司画像与八套方向全部完整输出，不得因篇幅而省略任何方向或模块。
 """
+
+# =============================================================================
+# 输出格式校验（对照文档的[输出要求]检查模型输出，不合格时自动重试一次）
+# =============================================================================
+# --- 格式校验 BEGIN ---
+EXPECTED_DIRECTIONS = [
+    ("一", "并购科创企业"),
+    ("二", "产研合作"),
+    ("三", "数智化改造"),
+    ("四", "渠道合作"),
+    ("五", "精益管理"),
+    ("六", "全球化出海布局"),
+    ("七", "投资科创企业"),
+    ("八", "投资科创基金"),
+]
+# (模块关键词, 条目数下限, 条目数上限)；核心定位不检查条数
+MODULE_RULES = [
+    ("方向核心定位", None, None),
+    ("专属落地方向", 3, 4),
+    ("转型核心优势", 4, 4),
+    ("核心实施要点", 4, 4),
+]
+HEADING_RE = re.compile(r"(?m)^[#\s\*]*方向([一二三四五六七八九十])[：:]")
+ITEM_RE = re.compile(r"(?m)^\s*(?:[-*•]\s*)?\d+[\.、．)）]\s*\S")
+
+
+def validate_output(text: str, truncated: bool = False) -> list:
+    """返回格式问题列表；列表为空表示通过校验。"""
+    issues = []
+    if truncated:
+        issues.append("输出因长度限制被截断，部分内容缺失")
+    if "重要提示" not in text[:500]:
+        issues.append("缺少开头的“重要提示”免责声明")
+
+    matches = list(HEADING_RE.finditer(text))
+    first_heading_pos = matches[0].start() if matches else len(text)
+
+    # 公司画像
+    profile_pos = text.find("公司画像")
+    if profile_pos < 0:
+        issues.append("缺少“公司画像（简要提炼）”")
+    else:
+        profile_part = text[profile_pos:first_heading_pos]
+        for key in ("所属行业", "核心业务", "当前痛点", "可用资源"):
+            if key not in profile_part:
+                issues.append(f"公司画像缺少“{key}”")
+
+    # 八套方向
+    sections = {}
+    for i, m in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        sections.setdefault(m.group(1), text[m.end():end])
+
+    for num, name in EXPECTED_DIRECTIONS:
+        label = f"方向{num}（{name}）"
+        body = sections.get(num)
+        if body is None:
+            issues.append(f"缺少{label}")
+            continue
+        if name not in body[: len(name) + 8]:
+            issues.append(f"方向{num}的名称应为“{name}”")
+
+        positions, missing = [], False
+        for marker, _, _ in MODULE_RULES:
+            pos = body.find(marker)
+            if pos < 0:
+                issues.append(f"{label}缺少“{marker}”模块")
+                missing = True
+            positions.append(pos)
+        if missing:
+            continue
+        if positions != sorted(positions):
+            issues.append(f"{label}的模块顺序不符合要求")
+            continue
+
+        for idx, (marker, low, high) in enumerate(MODULE_RULES):
+            if low is None:
+                continue
+            start = positions[idx]
+            end = positions[idx + 1] if idx + 1 < len(positions) else len(body)
+            count = len(ITEM_RE.findall(body[start:end]))
+            if not (low <= count <= high):
+                need = f"{low}条" if low == high else f"{low}-{high}条"
+                issues.append(f"{label}的“{marker}”应为{need}，实际{count}条")
+
+        if num == "七":
+            for kw in ("专项基金", "同祺"):
+                if kw not in body:
+                    issues.append(f"{label}未体现“{kw}”")
+        if num == "八":
+            for kw in ("盲池基金", "LP", "同祺"):
+                if kw not in body:
+                    issues.append(f"{label}未体现“{kw}”")
+
+    if re.search(r"[{｛][^}｝]{0,300}[}｝]", text):
+        issues.append("输出中仍含有未替换的模板占位符 { }")
+    return issues
+# --- 格式校验 END ---
+
+
+def call_model(messages):
+    """调用模型，返回 (文本, 是否因长度被截断)。"""
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=messages,
+        temperature=0.2,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        stream=False,
+    )
+    choice = response.choices[0]
+    return (choice.message.content or ""), (choice.finish_reason == "length")
 
 
 # =============================================================================
@@ -230,29 +368,61 @@ if submit_button:
 """
             st.info("ℹ️ 输入总长度接近模型上限，已自动精简补充材料部分以确保正常生成。")
 
+        base_messages = [
+            {"role": "system", "content": FULL_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    "请严格按照【输出要求】，为以下公司输出“免责声明 + 公司画像 + 八套专属转型升级方向”：\n"
+                    f"{user_context}"
+                ),
+            },
+        ]
+
         with st.spinner("正在生成八套专属方向...（约 30-60 秒）"):
             try:
-                response = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": FULL_SYSTEM_PROMPT},
-                        {"role": "user", "content": f"请为以下公司生成完整转型升级八套专属方向：\n{user_context}"},
-                    ],
-                    temperature=0.3,
-                    max_tokens=8000,
-                    stream=False,
-                )
-                scheme = response.choices[0].message.content
+                scheme, was_cut = call_model(base_messages)
+                issues = validate_output(scheme, was_cut)
 
-                st.success("✅ 生成完成！")
-                st.warning("**重要提示：本方向仅供参考，不构成任何正式的投资、经营或法律建议。**")
-                st.markdown(scheme)
+                # 格式不合格时，带着问题清单让模型完整重写一次
+                if issues:
+                    fix_prompt = (
+                        "上一版输出未完全符合格式要求，存在以下问题：\n"
+                        + "\n".join(f"- {i}" for i in issues)
+                        + "\n请严格按照【输出要求】重新输出完整内容（免责声明、公司画像及八套方向），"
+                        "不得省略、不得只补充片段；每条控制在60字以内，确保全部输出完整。"
+                    )
+                    retry_messages = base_messages + [
+                        {"role": "assistant", "content": scheme},
+                        {"role": "user", "content": fix_prompt},
+                    ]
+                    scheme2, was_cut2 = call_model(retry_messages)
+                    issues2 = validate_output(scheme2, was_cut2)
+                    if len(issues2) <= len(issues):
+                        scheme, issues = scheme2, issues2
 
-                st.download_button(
-                    label="📥 下载方案（Markdown）",
-                    data=scheme,
-                    file_name=f"{company_name}_转型升级八套方向.md",
-                    mime="text/markdown",
-                )
+                st.session_state["scheme"] = scheme
+                st.session_state["scheme_issues"] = issues
+                st.session_state["scheme_company"] = company_name
             except Exception as e:
                 st.error(f"AI 调用失败：{str(e)}")
+
+# 结果展示放在表单之外，点击“下载”触发页面刷新后结果也不会消失
+if st.session_state.get("scheme"):
+    st.success("✅ 生成完成！")
+    st.warning("**重要提示：本方向仅供参考，不构成任何正式的投资、经营或法律建议。**")
+
+    result_issues = st.session_state.get("scheme_issues", [])
+    if result_issues:
+        st.warning("⚠️ 输出格式自检发现以下问题，建议重新生成一次：\n\n" + "\n".join(f"- {i}" for i in result_issues))
+    else:
+        st.caption("✅ 已通过格式自检：公司画像 + 八套方向，每套含4个固定模块。")
+
+    st.markdown(st.session_state["scheme"])
+
+    st.download_button(
+        label="📥 下载方案（Markdown）",
+        data=st.session_state["scheme"],
+        file_name=f"{st.session_state.get('scheme_company', '公司')}_转型升级八套方向.md",
+        mime="text/markdown",
+    )
